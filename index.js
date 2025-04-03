@@ -1,29 +1,28 @@
 require('dotenv').config();
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require("openai");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-});
-
-// Aceita JSON no body
 app.use(express.json());
 
-// Conexão com o Supabase
+// Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
 
-// ✅ Status checker
+// OpenAI
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ✅ Status
 app.get('/status', (req, res) => {
   res.send('🔥 AVA online');
 });
 
-// ✅ GET básico para debug
+// ✅ Teste de conexão
 app.get('/', async (req, res) => {
   try {
     const { data, error } = await supabase.from('messages').select('*').limit(5);
@@ -34,7 +33,7 @@ app.get('/', async (req, res) => {
   }
 });
 
-// ✅ Retorna histórico de mensagens
+// ✅ Histórico de mensagens
 app.get('/responder/:numero', async (req, res) => {
   const numero = `+${req.params.numero}`;
 
@@ -58,35 +57,12 @@ app.get('/responder/:numero', async (req, res) => {
   }
 });
 
-// ✅ Endpoint principal para responder
-app.post('/responder', async (req, res) => {
-  try {
-    const { numero, nome, empresa, mensagem, contexto } = req.body;
-
-    if (!numero || !mensagem) {
-      return res.status(400).json({ erro: 'Número e mensagem são obrigatórios.' });
-    }
-
-    const resposta = `Olá, ${nome || 'cliente'} da ${empresa || 'sua empresa'}! Recebemos: "${mensagem}"`;
-
-    res.json({ resposta });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
-const OpenAI = require("openai");
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
-// Rota para ativar a AVA com base no número
+// ✅ Rota para ativar AVA como agente externo via Supabase + OpenAI
 app.get('/ava/:numero', async (req, res) => {
   const numero = `+${req.params.numero}`;
 
   try {
-    // Busca histórico no Supabase
+    // 🔍 Histórico de mensagens no Supabase
     const { data, error } = await supabase
       .from('messages')
       .select('content')
@@ -98,17 +74,17 @@ app.get('/ava/:numero', async (req, res) => {
       return res.json({ resposta: 'Sem mensagens no histórico ainda.' });
     }
 
-    // Junta todas as mensagens como contexto para a AVA
+    // 📜 Contexto concatenado
     const contexto = data.map((m, i) => `Mensagem ${i + 1}: ${m.content}`).join('\n');
 
-    // Cria thread + run do assistente AVA
+    // 🚀 Thread e execução com AVA
     const thread = await openai.beta.threads.create();
     const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: 'asst_1nsGuD8O7v7zYnRYTtedJLpQ',
-      instructions: `Você está conversando com um cliente da Alta Conversão via WhatsApp. Histórico recente:\n\n${contexto}`
+      assistant_id: process.env.AVA_ASSISTANT_ID, // <-- Agora usando variável de ambiente
+      instructions: `Você é a assistente da Alta Conversão chamada Ava. Utilize o histórico abaixo para responder:\n\n${contexto}`
     });
 
-    // Espera a execução ser finalizada (polling)
+    // 🕐 Polling até completar
     let status = 'queued';
     while (status !== 'completed') {
       await new Promise(r => setTimeout(r, 1000));
@@ -116,13 +92,34 @@ app.get('/ava/:numero', async (req, res) => {
       status = result.status;
     }
 
-    // Recupera resposta gerada
+    // 💬 Captura da resposta da AVA
     const messages = await openai.beta.threads.messages.list(thread.id);
     const resposta = messages.data.find(m => m.role === 'assistant')?.content[0]?.text?.value;
 
-    res.json({ resposta });
+    res.json({ resposta: resposta || 'Sem resposta gerada pela AVA.' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ erro: err.message });
   }
+});
+
+// ✅ Endpoint POST opcional (manter caso necessário)
+app.post('/responder', async (req, res) => {
+  try {
+    const { numero, nome, empresa, mensagem } = req.body;
+
+    if (!numero || !mensagem) {
+      return res.status(400).json({ erro: 'Número e mensagem são obrigatórios.' });
+    }
+
+    const resposta = `Olá, ${nome || 'cliente'} da ${empresa || 'sua empresa'}! Recebemos: "${mensagem}"`;
+    res.json({ resposta });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// 🟢 Start do servidor
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
 });
