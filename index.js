@@ -1,62 +1,102 @@
-import express from 'express';
-import dotenv from 'dotenv';
-import { OpenAI } from 'openai';
+import express from "express";
+import bodyParser from "body-parser";
+import cors from "cors";
+import dotenv from "dotenv";
+import { Client } from "@notionhq/client";
+import OpenAI from "openai";
 
 dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(cors());
+app.use(bodyParser.json());
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
+// Notion + OpenAI Setup
+const notion = new Client({ auth: process.env.NOTION_KEY });
+const databaseId = process.env.NOTION_DATABASE_ID;
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+app.get("/", (req, res) => {
+  res.send("API da AVA rodando ✅");
 });
 
-// 🧠 Prompt da AVA
-const AVA_PROMPT = `
-Você é a AVA, assistente virtual da AltaConversão.ai. Sua missão é ajudar os clientes com educação, empatia e estratégia. Nunca diga que é uma IA. Use os dados da campanha quando disponíveis. Use emojis para organizar as respostas visualmente.
-
-1. Sempre chame o cliente pelo nome (se informado).
-2. Use o nome da empresa (se informado).
-3. Se possível, entregue insights, explique resultados ruins, e celebre os bons.
-4. Agende reuniões via Calendly se pedirem.
-5. Finalize com frases como: “Tô aqui 24h pra te ajudar, viu? Só me chamar 😊”
-`;
-
-app.get('/status', (req, res) => {
-  res.send('AVA API online 🚀');
+app.get("/status", (req, res) => {
+  res.status(200).json({ status: "Online", agent: "AVA" });
 });
 
-app.post('/ava', async (req, res) => {
+app.post("/responder", async (req, res) => {
   try {
-    const userMessage = req.body.message || '';
-    const clientName = req.body.clientName || 'cliente';
-    const companyName = req.body.companyName || 'sua empresa';
-    const dados = req.body.dadosCampanha || '';
+    const { numero, mensagem } = req.body;
 
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4',
-      messages: [
-        {
-          role: 'system',
-          content: AVA_PROMPT,
+    if (!numero || !mensagem) {
+      return res.status(400).json({ erro: "Número e mensagem são obrigatórios." });
+    }
+
+    const response = await notion.databases.query({
+      database_id: databaseId,
+      filter: {
+        property: "Número",
+        rich_text: {
+          contains: numero,
         },
-        {
-          role: 'user',
-          content: `Mensagem do cliente (${clientName} - ${companyName}): ${userMessage}\nDados da campanha: ${JSON.stringify(dados)}`,
-        },
-      ],
-      temperature: 0.7,
+      },
     });
 
-    const resposta = response.choices[0].message.content;
-    res.json({ resposta });
+    if (!response.results.length) {
+      return res.status(404).json({ erro: "Cliente não encontrado." });
+    }
+
+    const cliente = response.results[0];
+    const props = cliente.properties;
+
+    const nomeCliente = props["Nome do Cliente"]?.title[0]?.plain_text || "Cliente";
+    const nomeEmpresa = props["Nome da Empresa"]?.rich_text[0]?.plain_text || "sua empresa";
+
+    const investimento = parseFloat(props.Investimento?.number || 0);
+    const faturamento = parseFloat(props.Faturamento?.number || 0);
+    const compras = parseInt(props.Compras?.number || 0);
+    const roas = faturamento && investimento ? (faturamento / investimento).toFixed(2) : 0;
+    const cpa = compras && investimento ? (investimento / compras).toFixed(2) : 0;
+
+    const prompt = `
+Você é a AVA, assistente de atendimento da AltaConversão.ai.
+Responda com educação, empatia e estratégia. Nunca diga que é uma IA.
+Seja breve, útil e propositiva. Utilize os dados da campanha quando disponíveis.
+
+Cliente: ${nomeCliente}
+Empresa: ${nomeEmpresa}
+
+📊 Desempenho:
+💰 Investimento: R$ ${investimento.toFixed(2)}
+📈 Faturamento: R$ ${faturamento.toFixed(2)}
+🛒 Compras: ${compras}
+📊 ROAS: ${roas}
+💳 CPA: R$ ${cpa}
+
+Mensagem recebida: "${mensagem}"
+
+Aja como uma consultora 24h. Traga insights, ideias, frases humanizadas como:
+"Olha, eu sei que você sabe, mas estou aqui 24h para te ajudar, tá bom? Me chama sempre que quiser bater um papo."
+
+Se os números estiverem baixos, mostre preocupação e proponha ações.
+Se estiverem bons, elogie e incentive.
+Sempre termine a resposta com um tom otimista.
+`;
+
+    const completion = await openai.chat.completions.create({
+      messages: [{ role: "user", content: prompt }],
+      model: "gpt-4",
+    });
+
+    const resposta = completion.choices[0].message.content;
+    res.status(200).json({ resposta });
   } catch (error) {
-    console.error('Erro ao gerar resposta:', error);
-    res.status(500).json({ erro: 'Erro ao gerar resposta da AVA.' });
+    console.error("Erro ao gerar resposta:", error);
+    res.status(500).json({ erro: "Erro ao gerar resposta personalizada." });
   }
 });
 
 app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
+  console.log(`🔥 Servidor rodando em http://localhost:${port}`);
 });
