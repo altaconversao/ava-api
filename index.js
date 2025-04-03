@@ -1,76 +1,62 @@
-require('dotenv').config();
-const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
+import express from 'express';
+import dotenv from 'dotenv';
+import { OpenAI } from 'openai';
 
+dotenv.config();
 const app = express();
-const PORT = process.env.PORT || 8080;
+const port = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
-});
-
-// Aceita JSON no body
 app.use(express.json());
 
-// Conexão com o Supabase
-const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_KEY
-);
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
-// ✅ Status checker
+// 🧠 Prompt da AVA
+const AVA_PROMPT = `
+Você é a AVA, assistente virtual da AltaConversão.ai. Sua missão é ajudar os clientes com educação, empatia e estratégia. Nunca diga que é uma IA. Use os dados da campanha quando disponíveis. Use emojis para organizar as respostas visualmente.
+
+1. Sempre chame o cliente pelo nome (se informado).
+2. Use o nome da empresa (se informado).
+3. Se possível, entregue insights, explique resultados ruins, e celebre os bons.
+4. Agende reuniões via Calendly se pedirem.
+5. Finalize com frases como: “Tô aqui 24h pra te ajudar, viu? Só me chamar 😊”
+`;
+
 app.get('/status', (req, res) => {
-  res.send('🔥 AVA online');
+  res.send('AVA API online 🚀');
 });
 
-// ✅ GET básico para debug
-app.get('/', async (req, res) => {
+app.post('/ava', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('messages').select('*').limit(5);
-    if (error) return res.status(500).json({ erro: error.message });
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
+    const userMessage = req.body.message || '';
+    const clientName = req.body.clientName || 'cliente';
+    const companyName = req.body.companyName || 'sua empresa';
+    const dados = req.body.dadosCampanha || '';
 
-// ✅ Retorna histórico de mensagens
-app.get('/responder/:numero', async (req, res) => {
-  const numero = `+${req.params.numero}`;
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4',
+      messages: [
+        {
+          role: 'system',
+          content: AVA_PROMPT,
+        },
+        {
+          role: 'user',
+          content: `Mensagem do cliente (${clientName} - ${companyName}): ${userMessage}\nDados da campanha: ${JSON.stringify(dados)}`,
+        },
+      ],
+      temperature: 0.7,
+    });
 
-  try {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('content, created_at')
-      .eq('number', numero)
-      .order('created_at', { ascending: true });
-
-    if (error) return res.status(500).json({ erro: error.message });
-
-    if (!data || data.length === 0) {
-      return res.json({ resposta: 'Nenhuma mensagem encontrada.' });
-    }
-
-    const ultimaMensagem = data[data.length - 1].content;
-    return res.json({ resposta: `Última mensagem: "${ultimaMensagem}"` });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
-
-// ✅ Endpoint principal para responder
-app.post('/responder', async (req, res) => {
-  try {
-    const { numero, nome, empresa, mensagem, contexto } = req.body;
-
-    if (!numero || !mensagem) {
-      return res.status(400).json({ erro: 'Número e mensagem são obrigatórios.' });
-    }
-
-    const resposta = `Olá, ${nome || 'cliente'} da ${empresa || 'sua empresa'}! Recebemos: "${mensagem}"`;
-
+    const resposta = response.choices[0].message.content;
     res.json({ resposta });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
+  } catch (error) {
+    console.error('Erro ao gerar resposta:', error);
+    res.status(500).json({ erro: 'Erro ao gerar resposta da AVA.' });
   }
+});
+
+app.listen(port, () => {
+  console.log(`Servidor rodando na porta ${port}`);
 });
