@@ -74,8 +74,3 @@ app.post('/responder', async (req, res) => {
     res.status(500).json({ erro: err.message });
   }
 });
-
-// 🟢 Iniciar servidor
-app.listen(port, () => {
-  console.log(`✅ AVA rodando na porta ${port}`);
-});
