@@ -3,7 +3,11 @@ const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
+
+app.listen(PORT, () => {
+  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+});
 
 // Aceita JSON no body
 app.use(express.json());
