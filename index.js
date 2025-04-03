@@ -72,17 +72,28 @@ app.get('/ava/:numero', async (req, res) => {
     if (error) return res.status(500).json({ erro: error.message });
     if (!data || data.length === 0) {
       return res.json({ resposta: 'Sem mensagens no histórico ainda.' });
+
+      
     }
+    const mensagens = data.map(m => m.content);
+    const historico = mensagens.slice(0, -1).join('\n');
+    const ultimaMensagem = mensagens[mensagens.length - 1];
 
-    // 📜 Contexto concatenado
-    const contexto = data.map((m, i) => `Mensagem ${i + 1}: ${m.content}`).join('\n');
-
-    // 🚀 Thread e execução com AVA
     const thread = await openai.beta.threads.create();
     const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: process.env.AVA_ASSISTANT_ID, // <-- Agora usando variável de ambiente
-      instructions: `Você é a assistente da Alta Conversão chamada Ava. Utilize o histórico abaixo para responder:\n\n${contexto}`
+      assistant_id: process.env.AVA_ASSISTANT_ID,
+      instructions: `Você é a Ava, assistente oficial da AltaConversão.ai. Abaixo está o histórico de conversas anteriores com o cliente, seguido da última mensagem recebida. Responda com empatia, estratégia e tom humano, como se estivesse conversando pelo WhatsApp.
+
+### Histórico:
+${historico}
+
+### Última mensagem do cliente:
+${ultimaMensagem}
+
+Responda como se fosse uma continuação da conversa. Seja clara, útil e objetiva. Caso não tenha histórico ou você não encontre, continue a nova conversa de forma natural.`
     });
+
+
 
     // 🕐 Polling até completar
     let status = 'queued';
