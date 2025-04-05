@@ -4,10 +4,9 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-  "start": "node index.js",
-  "coletar-meta": "node coletar_meta.js"
-}
-,
+    "start": "node index.js",
+    "coletar-meta": "node coletar_meta.js"
+  },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.4",
     "dotenv": "^16.4.7",
