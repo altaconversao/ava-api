@@ -1,8 +1,8 @@
 {
   "name": "ava-api",
   "version": "1.0.0",
-  "type": "commonjs",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node index.js",
     "coletar-meta": "node coletar_meta.js"
@@ -12,6 +12,6 @@
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "openai": "^4.91.1",
-    "axios": "^1.6.7"
+    "axios": "^1.8.4"
   }
 }
