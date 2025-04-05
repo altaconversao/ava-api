@@ -102,11 +102,18 @@ app.listen(port, () => {
 // Rota de execução do script de coleta do Meta Ads
 app.get('/coletar-meta', async (req, res) => {
   try {
-    const script = await import('./coletar_meta.js');
-    res.status(200).send('✅ Script de coleta do Meta Ads executado.');
+    const coletarMeta = require('./coletar_meta.js');
+    
+    if (typeof coletarMeta === 'function') {
+      await coletarMeta(); // executa a função principal, se for exportada
+      res.status(200).send('✅ Script de coleta do Meta Ads executado com sucesso.');
+    } else {
+      res.status(500).send('❌ O script não exporta uma função válida.');
+    }
   } catch (err) {
     console.error('Erro ao executar o script de coleta:', err);
     res.status(500).send('❌ Erro ao executar o script.');
   }
 });
+
 
