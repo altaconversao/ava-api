@@ -73,9 +73,9 @@ app.post('/ava/responder', async (req, res) => {
 
     return res.json({ resposta: response });
 
-  } catch (error) {
-    console.error('Erro ao processar requisição da AVA:', error);
-    return res.status(500).json({ error: 'Erro interno ao responder.' });
+    } catch (error) {
+    console.error("Erro ao processar resposta da Ava:", error); // 👈 isso aqui vai nos dar o erro real
+    res.status(500).json({ error: 'Erro interno ao responder.' });
   }
 });
 
