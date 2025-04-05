@@ -47,9 +47,22 @@ app.post('/ava/responder', async (req, res) => {
       content: mensagem
     });
 
-    const run = await openai.beta.threads.runs.create(thread_id, {
-      assistant_id
-    });
+    // Buscar nome e empresa no Supabase
+const clienteRes = await supabase
+  .from('clientes')
+  .select('nome, empresa')
+  .eq('numero', numero)
+  .single();
+
+const nomeCliente = clienteRes?.data?.nome || nome || 'Cliente';
+const empresaCliente = clienteRes?.data?.empresa || 'sua empresa';
+
+// Rodar a AVA com instruções personalizadas
+const run = await openai.beta.threads.runs.create(thread_id, {
+  assistant_id,
+  additional_instructions: `Você está conversando com ${nomeCliente}, da empresa ${empresaCliente}. Seja empática, proativa e útil. Se souber os dados dele, personalize suas respostas com essas informações.`
+});
+
 
     let attempts = 0;
     let result;
