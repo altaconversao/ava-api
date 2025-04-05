@@ -1,136 +1,96 @@
-require('dotenv').config();
-const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
-const OpenAI = require("openai");
+import express from 'express';
+import bodyParser from 'body-parser';
+import { createClient } from '@supabase/supabase-js';
+import OpenAI from 'openai';
 
 const app = express();
-const PORT = process.env.PORT || 8080;
+const port = process.env.PORT || 8080;
 
-app.use(express.json());
+app.use(bodyParser.json());
 
-// Supabase
 const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_KEY
 );
 
-// OpenAI
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// ✅ Status
-app.get('/status', (req, res) => {
-  res.send('🔥 AVA online');
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
-// ✅ Teste de conexão
-app.get('/', async (req, res) => {
+const assistant_id = process.env.OPENAI_ASSISTANT_ID;
+
+// 🚀 Rota principal de resposta da AVA
+app.post('/ava/responder', async (req, res) => {
   try {
-    const { data, error } = await supabase.from('messages').select('*').limit(5);
-    if (error) return res.status(500).json({ erro: error.message });
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
+    const { numero, nome, mensagem } = req.body;
 
-// ✅ Histórico de mensagens
-app.get('/responder/:numero', async (req, res) => {
-  const numero = `+${req.params.numero}`;
-
-  try {
-    const { data, error } = await supabase
-      .from('messages')
-      .select('content, created_at')
-      .eq('number', numero)
-      .order('created_at', { ascending: true });
-
-    if (error) return res.status(500).json({ erro: error.message });
-
-    if (!data || data.length === 0) {
-      return res.json({ resposta: 'Nenhuma mensagem encontrada.' });
+    // Verifica campos obrigatórios
+    if (!numero || !mensagem) {
+      return res.status(400).json({ error: 'Número e mensagem são obrigatórios.' });
     }
 
-    const ultimaMensagem = data[data.length - 1].content;
-    return res.json({ resposta: `Última mensagem: "${ultimaMensagem}"` });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
-});
+    // Cria thread única por número (ou reutiliza existente)
+    const threadRes = await supabase
+      .from('threads')
+      .select('thread_id')
+      .eq('numero', numero)
+      .single();
 
-// ✅ Rota para ativar AVA como agente externo via Supabase + OpenAI
-app.get('/ava/:numero', async (req, res) => {
-  const numero = `+${req.params.numero}`;
+    let thread_id = threadRes?.data?.thread_id;
 
-  try {
-    // 🔍 Histórico de mensagens no Supabase
-    const { data, error } = await supabase
-      .from('messages')
-      .select('content')
-      .eq('number', numero)
-      .order('created_at', { ascending: true });
+    if (!thread_id) {
+      const newThread = await openai.beta.threads.create();
+      thread_id = newThread.id;
 
-    if (error) return res.status(500).json({ erro: error.message });
-    if (!data || data.length === 0) {
-      return res.json({ resposta: 'Sem mensagens no histórico ainda.' });
-
-      
+      await supabase.from('threads').insert([{ numero, thread_id }]);
     }
-    const mensagens = data.map(m => m.content);
-    const historico = mensagens.slice(0, -1).join('\n');
-    const ultimaMensagem = mensagens[mensagens.length - 1];
 
-    const thread = await openai.beta.threads.create();
-    const run = await openai.beta.threads.runs.create(thread.id, {
-      assistant_id: process.env.AVA_ASSISTANT_ID,
-      instructions: `Você é a Ava, assistente oficial da AltaConversão.ai. Abaixo está o histórico de conversas anteriores com o cliente, seguido da última mensagem recebida. Responda com empatia, estratégia e tom humano, como se estivesse conversando pelo WhatsApp.
-
-### Histórico:
-${historico}
-
-### Última mensagem do cliente:
-${ultimaMensagem}
-
-Responda como se fosse uma continuação da conversa. Seja clara, útil e objetiva. Caso não tenha histórico ou você não encontre, continue a nova conversa de forma natural.`
+    // Envia a nova mensagem do usuário à thread
+    await openai.beta.threads.messages.create(thread_id, {
+      role: 'user',
+      content: mensagem
     });
 
+    // Inicia execução do agente AVA
+    const run = await openai.beta.threads.runs.create(thread_id, {
+      assistant_id
+    });
 
+    let attempts = 0;
+    let result;
 
-    // 🕐 Polling até completar
-    let status = 'queued';
-    while (status !== 'completed') {
-      await new Promise(r => setTimeout(r, 1000));
-      const result = await openai.beta.threads.runs.retrieve(thread.id, run.id);
-      status = result.status;
+    // Espera resposta com polling
+    while (attempts < 15) {
+      result = await openai.beta.threads.runs.retrieve(thread_id, run.id);
+
+      if (result.status === 'completed') break;
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      attempts++;
     }
 
-    // 💬 Captura da resposta da AVA
-    const messages = await openai.beta.threads.messages.list(thread.id);
-    const resposta = messages.data.find(m => m.role === 'assistant')?.content[0]?.text?.value;
+    if (result.status !== 'completed') {
+      return res.status(408).json({ error: 'A AVA demorou demais para responder.' });
+    }
 
-    res.json({ resposta: resposta || 'Sem resposta gerada pela AVA.' });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ erro: err.message });
+    const messages = await openai.beta.threads.messages.list(thread_id);
+    const lastResponse = messages.data.find(msg => msg.role === 'assistant');
+
+    const response = lastResponse?.content?.[0]?.text?.value || 'Sem resposta da AVA.';
+
+    return res.json({ resposta: response });
+
+  } catch (error) {
+    console.error('Erro ao processar requisição da AVA:', error);
+    return res.status(500).json({ error: 'Erro interno ao responder.' });
   }
 });
 
-// ✅ Endpoint POST opcional (manter caso necessário)
-app.post('/responder', async (req, res) => {
-  try {
-    const { numero, nome, empresa, mensagem } = req.body;
-
-    if (!numero || !mensagem) {
-      return res.status(400).json({ erro: 'Número e mensagem são obrigatórios.' });
-    }
-
-    const resposta = `Olá, ${nome || 'cliente'} da ${empresa || 'sua empresa'}! Recebemos: "${mensagem}"`;
-    res.json({ resposta });
-  } catch (err) {
-    res.status(500).json({ erro: err.message });
-  }
+// ✅ Rota para teste de status
+app.get('/ava/status', (req, res) => {
+  res.send('AVA online e funcionando ✔️');
 });
 
-// 🟢 Start do servidor
-app.listen(PORT, () => {
-  console.log(`🚀 Servidor rodando na porta ${PORT}`);
+app.listen(port, () => {
+  console.log(`AVA rodando em http://localhost:${port}`);
 });
