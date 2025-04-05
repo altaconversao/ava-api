@@ -1,3 +1,6 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const { createClient } = require('@supabase/supabase-js');
@@ -13,9 +16,7 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 );
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 const assistant_id = process.env.OPENAI_ASSISTANT_ID;
 
