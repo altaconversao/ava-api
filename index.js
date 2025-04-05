@@ -1,7 +1,7 @@
-import express from 'express';
-import bodyParser from 'body-parser';
-import { createClient } from '@supabase/supabase-js';
-import OpenAI from 'openai';
+const express = require('express');
+const bodyParser = require('body-parser');
+const { createClient } = require('@supabase/supabase-js');
+const OpenAI = require('openai');
 
 const app = express();
 const port = process.env.PORT || 8080;
@@ -19,17 +19,14 @@ const openai = new OpenAI({
 
 const assistant_id = process.env.OPENAI_ASSISTANT_ID;
 
-// 🚀 Rota principal de resposta da AVA
 app.post('/ava/responder', async (req, res) => {
   try {
     const { numero, nome, mensagem } = req.body;
 
-    // Verifica campos obrigatórios
     if (!numero || !mensagem) {
       return res.status(400).json({ error: 'Número e mensagem são obrigatórios.' });
     }
 
-    // Cria thread única por número (ou reutiliza existente)
     const threadRes = await supabase
       .from('threads')
       .select('thread_id')
@@ -45,13 +42,11 @@ app.post('/ava/responder', async (req, res) => {
       await supabase.from('threads').insert([{ numero, thread_id }]);
     }
 
-    // Envia a nova mensagem do usuário à thread
     await openai.beta.threads.messages.create(thread_id, {
       role: 'user',
       content: mensagem
     });
 
-    // Inicia execução do agente AVA
     const run = await openai.beta.threads.runs.create(thread_id, {
       assistant_id
     });
@@ -59,7 +54,6 @@ app.post('/ava/responder', async (req, res) => {
     let attempts = 0;
     let result;
 
-    // Espera resposta com polling
     while (attempts < 15) {
       result = await openai.beta.threads.runs.retrieve(thread_id, run.id);
 
@@ -75,7 +69,6 @@ app.post('/ava/responder', async (req, res) => {
 
     const messages = await openai.beta.threads.messages.list(thread_id);
     const lastResponse = messages.data.find(msg => msg.role === 'assistant');
-
     const response = lastResponse?.content?.[0]?.text?.value || 'Sem resposta da AVA.';
 
     return res.json({ resposta: response });
@@ -86,7 +79,6 @@ app.post('/ava/responder', async (req, res) => {
   }
 });
 
-// ✅ Rota para teste de status
 app.get('/ava/status', (req, res) => {
   res.send('AVA online e funcionando ✔️');
 });
