@@ -60,9 +60,8 @@ const empresaCliente = clienteRes?.data?.empresa || 'sua empresa';
 // Rodar a AVA com instruções personalizadas
 const run = await openai.beta.threads.runs.create(thread_id, {
   assistant_id,
-  additional_instructions: `Você está conversando com ${nomeCliente}, da empresa ${empresaCliente}. Seja empática, proativa e útil. Se souber os dados dele, personalize suas respostas com essas informações.`
+  additional_instructions: `Você está conversando com ${nomeCliente}, da empresa ${empresa}. Use essas informações de forma natural nas respostas. Seja empática, proativa e útil. Se souber dados do cliente, personalize tudo. Nome da empresa: ${empresa}. Nome do cliente: ${nomeCliente}.`
 });
-
 
     let attempts = 0;
     let result;
