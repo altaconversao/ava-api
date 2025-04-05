@@ -1,6 +1,6 @@
-import axios from 'axios';
-import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
+const axios = require('axios');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
 dotenv.config();
 
