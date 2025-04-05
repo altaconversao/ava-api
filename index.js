@@ -98,3 +98,15 @@ app.get('/ava/status', (req, res) => {
 app.listen(port, () => {
   console.log(`AVA rodando em http://localhost:${port}`);
 });
+
+// Rota de execução do script de coleta do Meta Ads
+app.get('/coletar-meta', async (req, res) => {
+  try {
+    const script = await import('./coletar_meta.js');
+    res.status(200).send('✅ Script de coleta do Meta Ads executado.');
+  } catch (err) {
+    console.error('Erro ao executar o script de coleta:', err);
+    res.status(500).send('❌ Erro ao executar o script.');
+  }
+});
+
