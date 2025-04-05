@@ -21,7 +21,7 @@ const assistant_id = process.env.OPENAI_ASSISTANT_ID;
 
 app.post('/ava/responder', async (req, res) => {
   try {
-    const { numero, nome, mensagem } = req.body;
+    const { numero, nome, mensagem, empresa } = req.body;
 
     if (!numero || !mensagem) {
       return res.status(400).json({ error: 'Número e mensagem são obrigatórios.' });
